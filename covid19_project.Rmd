@@ -1,0 +1,323 @@
+---
+title: "covid19_project"
+author: "Peter Mehler"
+date: "3/18/2020"
+output: html_document
+---
+data set: https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data/csse_covid_19_time_series
+
+```{r}
+confirmed_cases <- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")
+
+deaths <- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv")
+
+recovered <- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv")
+```
+
+#TO DO:
+Slope analysis / Comparison?
+Make multiple province countries functional with clean_data()
+Plot Predictive values extending from log of reported infections
+Look at Active cases are calculated as, Active cases = Confirmed cases - Deaths reported - Recovered cases
+Clean up to make it more report oriented
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+us <- confirmed_cases %>% 
+  filter(Province.State=="New York" | Province.State=="Washington" |Province.State=="California" | Province.State=="New Jersey" | Province.State=="Massachusetts" | Province.State=="Florida") %>% 
+  gather(key = X1.22.20, value = cases, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>% 
+  mutate(date = sub("X", "", X1.22.20)) %>% 
+  select(-X1.22.20) %>% 
+  mutate(date = as.Date(date,format="%m.%d.%y"))
+```
+
+```{r}
+us_plot <- ggplot(data = us, aes(x=date, y=cases, group = Province.State, color = Province.State)) +
+  labs(title = "Number of Cases in Top 6 Most Infected US States") +
+  geom_line() +
+  xlim(as.Date("3.8.20",format="%m.%d.%y"),NA)
+
+us_plot
+```
+# Clean Hubei Data
+```{r}
+# region == 1 means country, region == 2 means province
+clean_data <- function(name, region){
+   if (region==1){
+    temp_deaths <- deaths %>% 
+      filter(Country.Region==name) %>% 
+      #Convert to long format
+      gather(key = X1.22.20, value = deaths, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>%
+      mutate(date = sub("X", "", X1.22.20)) %>%  #get rid of the X prefix
+      select(-X1.22.20) %>% #delete old column
+      mutate(date = as.Date(date,format="%m.%d.%y")) %>%  #turn it into a date object
+      select(deaths, date)
+    
+    temp_recovered <- recovered %>% 
+      filter(Country.Region==name) %>% 
+      gather(key = X1.22.20, value = recovered, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>% 
+      mutate(date = sub("X", "", X1.22.20)) %>% 
+      select(-X1.22.20) %>% 
+      mutate(date = as.Date(date,format="%m.%d.%y")) %>% 
+      select(recovered, date)
+      
+    temp_cases <- confirmed_cases %>% 
+      filter(Country.Region==name) %>% 
+      gather(key = X1.22.20, value = cases, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>% 
+      mutate(date = sub("X", "", X1.22.20)) %>% 
+      select(-X1.22.20) %>% 
+      mutate(date = as.Date(date,format="%m.%d.%y"))
+    
+    temp_cases <- left_join(temp_cases, temp_deaths, "date")
+    temp_cases <- left_join(temp_cases, temp_recovered, "date")
+    
+    temp_cases <- temp_cases %>%
+      gather(key = type, value = amount, cases, recovered, deaths)
+  
+    return(temp_cases)
+  }
+  
+  else{
+    temp_deaths <- deaths %>% 
+      filter(Province.State==name) %>% 
+      gather(key = X1.22.20, value = deaths, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>% 
+      mutate(date = sub("X", "", X1.22.20)) %>% 
+      select(-X1.22.20) %>% 
+      mutate(date = as.Date(date,format="%m.%d.%y")) %>% 
+      select(deaths, date)
+    
+    temp_recovered <- recovered %>% 
+      filter(Province.State==name) %>% 
+      gather(key = X1.22.20, value = recovered, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>% 
+      mutate(date = sub("X", "", X1.22.20)) %>% 
+      select(-X1.22.20) %>% 
+      mutate(date = as.Date(date,format="%m.%d.%y")) %>% 
+      select(recovered, date)
+      
+    temp_cases <- confirmed_cases %>% 
+      filter(Province.State==name) %>% 
+      gather(key = X1.22.20, value = cases, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>% 
+      mutate(date = sub("X", "", X1.22.20)) %>% 
+      select(-X1.22.20) %>% 
+      mutate(date = as.Date(date,format="%m.%d.%y"))
+    
+    temp_cases <- left_join(temp_cases, temp_deaths, "date")
+    temp_cases <- left_join(temp_cases, temp_recovered, "date")
+    
+    temp_cases <- temp_cases %>%
+      gather(key = type, value = amount, cases, recovered, deaths)
+  
+    return(temp_cases)
+  }
+}
+```
+# CHOOSE YOUR COUNTRY OR PROVINCE
+Only works for Countries without several provinces and single provinces \n
+region == 1 means country, region == 2 means province
+```{r}
+hubei <- clean_data("Hubei", 2)
+```
+```{r}
+italy <- clean_data("Italy", 1)
+```
+```{r}
+s.korea <- clean_data("Korea, South", 1)
+```
+```{r}
+ny <- clean_data("New York", 2)
+```
+```{r}
+iran <- clean_data("Iran", 1)
+```
+```{r}
+spain <- clean_data("Spain",1)
+```
+
+
+```{r}
+# Works for countries with several provinces
+us_total <- confirmed_cases %>% 
+  filter(Country.Region=="US") %>% 
+  gather(key = X1.22.20, value = cases, 5:names(confirmed_cases)[length(names(confirmed_cases))]) %>% 
+  mutate(date = sub("X", "", X1.22.20)) %>% 
+  select(-X1.22.20) %>% 
+  mutate(date = as.Date(date,format="%m.%d.%y")) %>%
+  gather(key = type, value = amount, cases) %>% 
+  group_by(date) %>% 
+  summarize(amount = sum(amount),
+            Country.Region = "US")
+```
+
+```{r, include=FALSE}
+hubei %>% 
+  filter(type=="cases") %>% 
+  ggplot(aes(x=date, y=amount, group = 1)) +
+  labs(title = "hubei province, red line indicates Wuhan shutdown") +
+  geom_line() + 
+  geom_vline(xintercept = as.Date("1.23.20",format="%m.%d.%y"), 
+                color = "red", size=1) +
+  xlim(as.Date("1.22.20",format="%m.%d.%y"),NA)
+  
+#Wuhan Lockdown January 23rd
+```
+```{r}
+ggplot(data = hubei, aes(date, amount, fill = type)) +
+  geom_bar(position="stack", stat = "identity") +
+  labs(title = "Cases, Deaths, and Recoveries in Hubei Province Through Time",
+       x = "Date",
+       y = "Amount") +
+  theme(legend.title=element_blank())
+```
+
+# Italy Plot
+
+```{r, include=FALSE}
+italy %>% 
+  filter(type=="cases") %>% 
+  ggplot(aes(x=date, y=amount, group = 1)) +
+  labs(title = "italy", caption = "caption" ) +
+  geom_line() + 
+  geom_vline(xintercept = as.Date("3.8.20",format="%m.%d.%y"), 
+                color = "red", size=1) +
+  xlim(as.Date("3.8.20",format="%m.%d.%y"),NA) +
+  #ylim(0,32000) +
+  geom_smooth() +
+  #geom_smooth(method = lm) +
+  theme_minimal()
+
+# Perhaps there's a better way to calculate slope, Trying to avoid manual entry
+# slope = round(lm(temp$date~temp$amount)$coefficients[2],4)
+# 
+# as.double(slope)*10000
+#Italy Lockdown March 8th
+```
+```{r}
+ggplot(data = italy, aes(date, amount, fill = type)) +
+  geom_bar(position="stack", stat = "identity") +
+  theme(legend.title=element_blank()) +
+  labs(title = "Cases, Deaths, and Recoveries in Italy Through Time",
+       x = "Date",
+       y = "Amount")
+```
+```{r}
+require(gridExtra)
+plot1 <- ggplot(data = italy, aes(date, amount, fill = type)) +
+  geom_bar(position="fill", stat = "identity") +
+  labs(title = "Percentages of Case Statistics Italy", y="Percent", x="Date") +
+  theme(legend.title=element_blank())
+plot2 <- ggplot(data = hubei, aes(date, amount, fill = type)) +
+  geom_bar(position="fill", stat = "identity") +
+  labs(title = "Percentages of Case Statistics Hubei", y="Percent", x="Date") +
+  theme(legend.title=element_blank())
+
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+
+```{r}
+# Row combine all datasets from Italy, SK, Hubei, New York
+combined.countries <- rbind(hubei, italy, s.korea, ny, iran, spain)
+
+combined.countries <- combined.countries %>%
+  filter(type=="cases") %>%   # Have filtered by cases
+  filter(amount>400) %>%    # Filter cases > 400
+  group_by(Country.Region) %>% 
+  mutate(date = as.integer(format(date, "%j"))) %>% 
+  mutate(date = date - date[1]) # Change date to days since cases > 400
+```
+```{r}
+ggplot(data = combined.countries, aes(date, amount, color = Country.Region)) +
+  #geom_line() +
+  # geom_vline(xintercept = 1, color = "red", size=.25) + # Wuhan locks down
+  # geom_vline(xintercept = 11, color = "green", size=.25) + # Italy locks down
+  # geom_vline(xintercept = -1, color = "blue", size=.25) + # South Korea Socially Isolates
+  # geom_vline(xintercept = 8, color = "purple", size=.25) + # NY State orders lockdown
+  labs(x="Days since number of cases reached 400", 
+       y="Cumulative Cases", 
+       title = "Comparison of Cumulative Cases by Country",
+       subtitle = "Beginning When Number of Infections is Above 400",
+       caption = "US represents only NY data and China represents only Hubei data") +
+  xlim(0,NA) +
+  ylim(0,NA) +
+  geom_smooth(size=.75) +
+  theme(legend.title=element_blank())
+                        
+
+#Majority of people of South Korea decide to socially isolate 2.20.20 
+#Italy Lockdown 3.8.20
+#Wuhan Lockdown 1.23.20
+#NY State orders lockdown
+```
+```{r}
+ggplot(data = combined.countries, aes(date, amount, color = Country.Region)) +
+  geom_line() +
+  labs(x="Days since number of cases reached 400", 
+       y="Cumulative Cases", 
+       title = "Exponential Projections of Cumulative Cases by Country",
+       subtitle = "Beginning When Number of Infections is Above 400",
+       caption = "US represents only NY data and China represents only Hubei data") +
+  xlim(NA,50) +
+  ylim(0,NA) +
+  #geom_smooth(size=.75) +
+  theme(legend.title=element_blank()) +
+  scale_y_log10()
+  #stat_smooth(method="lm",fullrange=TRUE) 
+```
+
+```{r}
+# Row combine all datasets from Italy, SK, Hubei, New York
+combined.countries <- rbind(hubei, italy, s.korea, ny, iran)
+
+combined.countries <- combined.countries %>%
+  filter(type=="deaths") %>%   # Have filtered by deaths
+  filter(amount>0) %>%    # Filter cases > 0
+  group_by(Country.Region) %>% 
+  mutate(date = as.integer(format(date, "%j"))) %>% 
+  mutate(date = date - date[1]) # Change date to days since first death
+```
+```{r}
+ggplot(data = combined.countries, aes(date, amount, color = Country.Region)) +
+  #geom_line() +
+  labs(x="Days since first Death", 
+       y="Cumulative Deaths", 
+       title = "Comparison of Cumulative Deaths by Country Beginning After First Death", 
+       caption = "US represents only NY data and China represents only Hubei data") +
+  ylim(0,NA) +
+  geom_smooth() +
+  theme(legend.title=element_blank())
+
+```
+```{r}
+# Row combine all datasets from Italy, SK, Hubei, New York
+combined.countries <- rbind(hubei, italy, s.korea, iran)
+
+combined.countries <- combined.countries %>%
+  filter(type=="deaths") %>%   # Have filtered by deaths
+  filter(amount>0) %>%    # Filter cases > 0
+  group_by(Country.Region) %>% 
+  mutate(date = as.integer(format(date, "%j"))) %>% 
+  mutate(date = date - date[1]) # Change date to days since first death
+```
+```{r}
+ggplot(data = combined.countries, aes(date, amount, color = Country.Region)) +
+  #geom_line() +
+  labs(x="Days since first Death", 
+       y="Cumulative Deaths", 
+       title = "Exponential Projections of Cumulative Deaths by Country Beginning After First Death", 
+       caption = "US represents only NY data and China represents only Hubei data") +
+  ylim(0,NA) +
+  #geom_smooth() +
+  theme(legend.title=element_blank()) +
+  scale_y_log10() +
+  stat_smooth(method="lm",fullrange=TRUE)
+```
+
+
+Finding regression line for different subsets of data:
+
+Source: https://stackoverflow.com/questions/51355303/extract-slope-of-multiple-trend-lines-from-geom-smooth
